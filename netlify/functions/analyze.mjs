@@ -14,60 +14,27 @@ export default async (req) => {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: "Gemini API key is not configured in Netlify."
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
+      throw new Error("GEMINI_API_KEY is missing from Netlify.");
     }
 
-    const body = await req.json();
-    const { image, mimeType } = body;
+    const { image, mimeType } = await req.json();
 
-    if (
-      !image ||
-      !["image/png", "image/jpeg", "image/webp"].includes(mimeType)
-    ) {
-      return new Response(
-        JSON.stringify({
-          error: "Please upload a PNG, JPEG or WebP chart image."
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
-    }
-
-    if (image.length > 12000000) {
-      return new Response(
-        JSON.stringify({
-          error: "Image is too large. Please use a smaller screenshot."
-        }),
-        {
-          status: 413,
-          headers: { "Content-Type": "application/json" }
-        }
-      );
+    if (!image || !mimeType) {
+      throw new Error("Please upload a chart image first.");
     }
 
     const prompt = `
-Analyse this trading chart screenshot for educational purposes.
+Analyse this trading chart for educational purposes.
 
-Describe:
-1. The visible market structure and trend, if identifiable.
-2. Important visible support and resistance levels. Do not invent exact prices.
-3. Possible bullish and bearish scenarios.
-4. What confirmation a trader might wait for.
-5. What cannot be determined from the screenshot.
+1. Identify the visible trend and market structure.
+2. Describe visible support and resistance.
+3. Explain possible bullish and bearish scenarios.
+4. Identify potential entry confirmations.
+5. Explain what cannot be confirmed from this image.
 
-Do not guarantee a direction, profit, or outcome.
-If the symbol or timeframe is not visible, say so.
-Do not invent live prices or economic news.
+Do not invent prices, indicators, or news.
+Do not guarantee a trade direction or profit.
+If the symbol or timeframe is unclear, say so.
 This is educational information, not financial advice.
 `;
 
@@ -84,13 +51,13 @@ This is educational information, not financial advice.
           store: false,
           input: [
             {
-              type: "text",
-              text: prompt
+              type: "image",
+              mime_type: mimeType,
+              data: image
             },
             {
-              type: "image",
-              data: image,
-              mime_type: mimeType
+              type: "text",
+              text: prompt
             }
           ]
         })
@@ -100,34 +67,24 @@ This is educational information, not financial advice.
     const result = await response.json();
 
     if (!response.ok) {
-      return new Response(
-        JSON.stringify({
-          error:
-            result.error?.message ||
-            "Gemini could not analyse the chart."
-        }),
-        {
-          status: response.status === 429 ? 429 : 502,
-          headers: { "Content-Type": "application/json" }
-        }
+      throw new Error(
+        result.error?.message || "Gemini API request failed."
       );
     }
 
     let analysis = result.output_text || "";
 
-    if (!analysis && Array.isArray(result.output)) {
-      analysis = result.output
-        .flatMap((item) => item.content || [])
-        .filter((item) => item.type === "text" || item.type === "output_text")
-        .map((item) => item.text || "")
-        .join("\n")
-        .trim();
+    if (!analysis && Array.isArray(result.steps)) {
+      analysis = result.steps
+        .filter(step => step.type === "model_output")
+        .flatMap(step => step.content || [])
+        .filter(item => item.type === "text")
+        .map(item => item.text || "")
+        .join("\n");
     }
 
     if (!analysis) {
-      throw new Error(
-        "The AI returned no analysis. Please try again."
-      );
+      throw new Error("Gemini returned no analysis.");
     }
 
     return new Response(
@@ -140,6 +97,7 @@ This is educational information, not financial advice.
         }
       }
     );
+
   } catch (error) {
     return new Response(
       JSON.stringify({
