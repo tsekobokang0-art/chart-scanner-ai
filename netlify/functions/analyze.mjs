@@ -15,7 +15,9 @@ export default async (req) => {
 
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: "Gemini API key is not configured in Netlify." }),
+        JSON.stringify({
+          error: "Gemini API key is not configured in Netlify."
+        }),
         {
           status: 500,
           headers: { "Content-Type": "application/json" }
@@ -31,7 +33,9 @@ export default async (req) => {
       !["image/png", "image/jpeg", "image/webp"].includes(mimeType)
     ) {
       return new Response(
-        JSON.stringify({ error: "Please upload a PNG, JPEG or WebP chart image." }),
+        JSON.stringify({
+          error: "Please upload a PNG, JPEG or WebP chart image."
+        }),
         {
           status: 400,
           headers: { "Content-Type": "application/json" }
@@ -41,7 +45,9 @@ export default async (req) => {
 
     if (image.length > 12000000) {
       return new Response(
-        JSON.stringify({ error: "Image is too large. Please use a smaller screenshot." }),
+        JSON.stringify({
+          error: "Image is too large. Please use a smaller screenshot."
+        }),
         {
           status: 413,
           headers: { "Content-Type": "application/json" }
@@ -54,10 +60,10 @@ Analyse this trading chart screenshot for educational purposes.
 
 Describe:
 1. The visible market structure and trend, if identifiable.
-2. Important visible support and resistance levels, without inventing exact prices.
+2. Important visible support and resistance levels. Do not invent exact prices.
 3. Possible bullish and bearish scenarios.
-4. What additional confirmation a trader might wait for.
-5. What cannot be determined from this screenshot.
+4. What confirmation a trader might wait for.
+5. What cannot be determined from the screenshot.
 
 Do not guarantee a direction, profit, or outcome.
 If the symbol or timeframe is not visible, say so.
@@ -66,7 +72,7 @@ This is educational information, not financial advice.
 `;
 
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/interactions",
       {
         method: "POST",
         headers: {
@@ -74,17 +80,17 @@ This is educational information, not financial advice.
           "x-goog-api-key": apiKey
         },
         body: JSON.stringify({
-          contents: [
+          model: "gemini-3.8-flash",
+          store: false,
+          input: [
             {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: image
-                  }
-                }
-              ]
+              type: "text",
+              text: prompt
+            },
+            {
+              type: "image",
+              data: image,
+              mime_type: mimeType
             }
           ]
         })
@@ -96,7 +102,9 @@ This is educational information, not financial advice.
     if (!response.ok) {
       return new Response(
         JSON.stringify({
-          error: result.error?.message || "Gemini could not analyse the image."
+          error:
+            result.error?.message ||
+            "Gemini could not analyse the chart."
         }),
         {
           status: response.status === 429 ? 429 : 502,
@@ -105,13 +113,21 @@ This is educational information, not financial advice.
       );
     }
 
-    const analysis = result.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text || "")
-      .join("\n")
-      .trim();
+    let analysis = result.output_text || "";
+
+    if (!analysis && Array.isArray(result.output)) {
+      analysis = result.output
+        .flatMap((item) => item.content || [])
+        .filter((item) => item.type === "text" || item.type === "output_text")
+        .map((item) => item.text || "")
+        .join("\n")
+        .trim();
+    }
 
     if (!analysis) {
-      throw new Error("The AI returned no analysis. Please try again.");
+      throw new Error(
+        "The AI returned no analysis. Please try again."
+      );
     }
 
     return new Response(
