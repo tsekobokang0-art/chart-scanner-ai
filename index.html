@@ -1,0 +1,96 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chart Scanner AI</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0b1120;
+      color: #e5e7eb;
+      font-family: Arial, sans-serif;
+    }
+    main { max-width: 650px; margin: auto; }
+    h1 { color: #60a5fa; }
+    .card {
+      background: #151f32;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 18px;
+      margin: 18px 0;
+    }
+    input, button {
+      width: 100%;
+      padding: 13px;
+      margin-top: 12px;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    input { background: #0b1120; color: white; border: 1px solid #475569; }
+    button { background: #2563eb; color: white; border: 0; font-weight: bold; }
+    button:disabled { opacity: .6; }
+    #result { white-space: pre-wrap; line-height: 1.6; }
+    .muted { color: #94a3b8; font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Chart Scanner AI</h1>
+  <p class="muted">AI-assisted chart analysis · Version 0.2</p>
+
+  <section class="card">
+    <h2>Scan a chart</h2>
+    <p>Choose a screenshot of your trading chart to request an AI analysis.</p>
+    <input id="chart" type="file" accept="image/*">
+    <button id="scan">Analyse chart</button>
+    <p class="muted">Only upload chart screenshots. AI analysis can be wrong and is not financial advice.</p>
+  </section>
+
+  <section class="card">
+    <h2>Analysis</h2>
+    <div id="result">Your analysis will appear here.</div>
+  </section>
+</main>
+<script>
+const button = document.getElementById('scan');
+button.addEventListener('click', async () => {
+  const file = document.getElementById('chart').files[0];
+  const result = document.getElementById('result');
+  if (!file) {
+    result.textContent = 'Please choose a chart screenshot first.';
+    return;
+  }
+  if (!file.type.startsWith('image/')) {
+    result.textContent = 'Please select an image file.';
+    return;
+  }
+  button.disabled = true;
+  result.textContent = 'Analysing…';
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const response = await fetch('/.netlify/functions/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64, mimeType: file.type })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Analysis request failed.');
+    result.textContent = data.analysis || JSON.stringify(data, null, 2);
+  } catch (error) {
+    result.textContent = 'Could not analyse the chart. The AI backend still needs to be deployed and connected. Details: ' + error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
