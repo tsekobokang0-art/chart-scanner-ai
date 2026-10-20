@@ -113,7 +113,7 @@ Keep the final decision concise and easy to read.
           "x-goog-api-key": apiKey
         },
         body: JSON.stringify({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.5-flash-lite",
           store: false,
           input: [
             {
