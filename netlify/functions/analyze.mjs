@@ -104,47 +104,67 @@ INSTRUCTIONS:
 Keep the final decision concise and easy to read.
 `;
 
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/interactions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey
-        },
-        body: JSON.stringify({
-          model: "gemini-3.8-flash",
-          store: false,
-          input: [
-            {
-              type: "image",
-              data: image,
-              mime_type: mimeType
-            },
-            {
-              type: "text",
-              text: prompt
-            }
-          ]
-        })
-      }
-    );
+    const retryDelays = [5000, 10000, 20000];
 
-    const result = await response.json();
+    let response;
+    let result;
 
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({
-          error:
-            result.error?.message ||
-            "Gemini API request failed."
-        }),
+    for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+
+      response = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/interactions",
         {
-          status: response.status,
+          method: "POST",
           headers: {
-            "Content-Type": "application/json"
-          }
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey
+          },
+          body: JSON.stringify({
+            model: "gemini-3.8-flash",
+            store: false,
+            input: [
+              {
+                type: "image",
+                data: image,
+                mime_type: mimeType
+              },
+              {
+                type: "text",
+                text: prompt
+              }
+            ]
+          })
         }
+      );
+
+      result = await response.json();
+
+      if (response.ok) {
+        break;
+      }
+
+      const temporaryError =
+        response.status === 429 ||
+        response.status === 503;
+
+      if (!temporaryError || attempt === retryDelays.length) {
+        return new Response(
+          JSON.stringify({
+            error:
+              result.error?.message ||
+              "Gemini API request failed."
+          }),
+          {
+            status: response.status,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      }
+
+      await new Promise(resolve =>
+        setTimeout(resolve, retryDelays[attempt])
       );
     }
 
